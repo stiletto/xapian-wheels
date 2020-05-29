@@ -48,7 +48,7 @@ class xapian_build_ext(setuptools_build_ext):
         os.makedirs(tmpdir, exist_ok=True)
         try:
             self.xapian_cd(tmpdir)
-            fmtargs = {'version': self.distribution.get_version()}
+            fmtargs = {'version': self.distribution.get_version().split('+', 1)[0]}
             self.xapian_download('xapian-core.tar.xz', "https://oligarchy.co.uk/xapian/%(version)s/xapian-core-%(version)s.tar.xz" % fmtargs)
             self.xapian_download('xapian-bindings.tar.xz', "https://oligarchy.co.uk/xapian/%(version)s/xapian-bindings-%(version)s.tar.xz" % fmtargs)
             self.xapian_extract('xapian-core.tar.xz', 'xapian-core')
@@ -62,8 +62,13 @@ class xapian_build_ext(setuptools_build_ext):
             os.putenv("LDFLAGS", "-Wl,-rpath,'$$ORIGIN'")
             os.putenv("PYTHON3", sys.executable)
             if self.dry_run or not os.access("config.status", os.F_OK):
+                self.xapian_run("sed", "-i", "s!import sphinx!import sys!g", "configure")
                 self.xapian_run("./configure", "--with-python3")
-            self.xapian_run("make", "-j" + str(self.parallel if self.parallel else os.cpu_count()))
+            with open('python3/Makefile.py3ext', 'w') as makef:
+                makef.write('include Makefile\n')
+                makef.write('py3ext: xapian/_xapian$(PYTHON3_SO) xapian/__init__.py\n')
+                makef.write('.PHONY: py3ext\n')
+            self.xapian_run("make", "-C", "python3", "-f", "Makefile.py3ext", "-j" + str(self.parallel if self.parallel else os.cpu_count()), "py3ext")
             xapian_lib_path = os.path.join(tmpdir, "xapian-core", ".libs", xapian_lib_name)
         finally:
             self.xapian_cd(old_cwd)
@@ -79,7 +84,7 @@ xapian_lib_name = "libxapian.so.30"
 
 setup(
     name='xapian',
-    version='1.4.15',
+    version='1.4.15+1',
     description='Python bindings for Xapian',
     packages=['xapian'],
     ext_modules=[Extension('xapian._xapian', [])],
